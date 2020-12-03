@@ -1,0 +1,7 @@
+*.pyc
+*.pt
+*.gz
+
+__pycache__
+lightning_logs
+data/*/*
