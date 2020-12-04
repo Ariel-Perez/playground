@@ -52,23 +52,23 @@ class Model(pl.LightningModule):
         return optimizer
 
 
-def train(algo, dset, **kwargs):
-    train, test = dataset.train_test(dset)
+def train_and_evaluate(algo, dset, **kwargs):
+    train, test, dimensions, labels = dataset.train_test(dset)
     if algo == algorithm.Algorithm.LINEAR:
-        model = algorithm.Linear(784, 10)
+        model = algorithm.Linear(dimensions, labels)
     elif algo == algorithm.Algorithm.DNN:
-        model = algorithm.DNN(784, 10)
+        model = algorithm.DNN(dimensions, labels)
     elif algo == algorithm.Algorithm.CNN:
-        model = algorithm.CNN((28, 28), 10)
+        model = algorithm.CNN(dimensions, labels)
     elif algo == algorithm.Algorithm.SLIM:
-        model = algorithm.Slim((28, 28), 10)
+        model = algorithm.Slim(dimensions, labels)
     else:
         raise NotImplementedError('Algorithm not implemented: %s' % algo.name)
 
     lightning_model = Model(model)
     trainer = pl.Trainer(gpus=1, precision=16)
     train_loader = data.DataLoader(train, **kwargs)
-    test_loader = data.DataLoader(test, **kwargs)
+    test_loader = data.DataLoader(test, batch_size=1024)
 
     trainer.fit(lightning_model, train_loader)
     trainer.test(lightning_model, test_loader)
@@ -101,6 +101,7 @@ if __name__ == '__main__':
         raise KeyError('Invalid algorithm (%s), must be in %s' %
                        (args.algorithm, algorithm_names))
 
-    train(algo, dset,
-          batch_size=256, num_workers=4,
-          pin_memory=True, shuffle=True)
+    train_and_evaluate(
+        algo, dset,
+        batch_size=256, num_workers=4,
+        pin_memory=True, shuffle=True)

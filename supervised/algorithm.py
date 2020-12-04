@@ -1,4 +1,5 @@
 import enum
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -14,7 +15,7 @@ class Algorithm(enum.Enum):
 class Linear(nn.Module):
     def __init__(self, input_dim, output_dim):
         super().__init__()
-        self.linear = nn.Linear(input_dim, output_dim)
+        self.linear = nn.Linear(np.prod(input_dim), output_dim)
 
     def forward(self, x):
         x = x.view(x.shape[0], -1)
@@ -25,7 +26,7 @@ class DNN(nn.Module):
     def __init__(self, input_dim, output_dim):
         super().__init__()
         self.hidden_layers = nn.ModuleList([
-            nn.Linear(input_dim, 256),
+            nn.Linear(np.prod(input_dim), 256),
             nn.Linear(256, 256),
             nn.Linear(256, 256),
         ])
@@ -39,10 +40,11 @@ class DNN(nn.Module):
 
 
 class CNN(nn.Module):
-    def __init__(self, size, output_dim):
+    def __init__(self, input_dim, output_dim):
         super().__init__()
+        height, width, depth = input_dim
         self.conv_layers = nn.ModuleList([
-            nn.Conv2d(1, 128, kernel_size=3, padding=1),
+            nn.Conv2d(depth, 128, kernel_size=3, padding=1),
             nn.ReLU(),
             nn.MaxPool2d(2, 2),
             nn.Conv2d(128, 512, kernel_size=3, padding=1),
@@ -50,7 +52,7 @@ class CNN(nn.Module):
             nn.MaxPool2d(2, 2),
         ])
         self.fc_layers = nn.ModuleList([
-            nn.Linear(512 * 7 * 7, 128),
+            nn.Linear(512 * (height // 4) * (width // 4), 128),
             nn.ReLU(),
             nn.Dropout(0.1),
         ])
@@ -68,10 +70,10 @@ class CNN(nn.Module):
 
 
 class Slim(nn.Module):
-    def __init__(self, size, output_dim):
+    def __init__(self, input_dim, output_dim):
         super().__init__()
-        height, width = size
-        self.horizontal = nn.Conv2d(1, 256, kernel_size=(3, width))
+        height, width, depth = input_dim
+        self.horizontal = nn.Conv2d(depth, 256, kernel_size=(3, width))
         self.horizontal_2 = nn.Conv2d(256, 512, kernel_size=(1, width - 2))
         self.vertical = nn.Conv2d(1, 256, kernel_size=(height, 3))
         self.vertical_2 = nn.Conv2d(256, 512, kernel_size=(height - 2, 1))
