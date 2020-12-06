@@ -48,8 +48,10 @@ class Model(pl.LightningModule):
         return {'test_loss': loss, 'test_acc': accuracy}
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adagrad(self.parameters(), lr=3e-4)
-        return optimizer
+        optimizer = torch.optim.Adagrad(self.parameters(), lr=1e-2)
+        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
+        return [optimizer], [scheduler]
+        # return optimizer
 
 
 def train_and_evaluate(algo, dset, **kwargs):
@@ -57,11 +59,15 @@ def train_and_evaluate(algo, dset, **kwargs):
     if algo == algorithm.Algorithm.LINEAR:
         model = algorithm.Linear(dimensions, labels)
     elif algo == algorithm.Algorithm.DNN:
-        model = algorithm.DNN(dimensions, labels)
+        model = algorithm.DNN(dimensions, labels, num_layers=10)
     elif algo == algorithm.Algorithm.CNN:
         model = algorithm.CNN(dimensions, labels)
     elif algo == algorithm.Algorithm.SLIM:
         model = algorithm.Slim(dimensions, labels)
+    elif algo == algorithm.Algorithm.SLIM:
+        model = algorithm.Slim(dimensions, labels)
+    elif algo == algorithm.Algorithm.HIGHWAY_NETWORK:
+        model = algorithm.HighwayNetwork(dimensions, labels, num_layers=100)
     else:
         raise NotImplementedError('Algorithm not implemented: %s' % algo.name)
 

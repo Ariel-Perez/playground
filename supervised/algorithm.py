@@ -10,6 +10,7 @@ class Algorithm(enum.Enum):
     DNN = 1
     CNN = 2
     SLIM = 3
+    HIGHWAY_NETWORK = 4
 
 
 class Linear(nn.Module):
@@ -23,17 +24,17 @@ class Linear(nn.Module):
 
 
 class DNN(nn.Module):
-    def __init__(self, input_dim, output_dim):
+    def __init__(self, input_dim, output_dim, num_layers):
         super().__init__()
+        self.initial_layer = nn.Linear(np.prod(input_dim), 64)
         self.hidden_layers = nn.ModuleList([
-            nn.Linear(np.prod(input_dim), 256),
-            nn.Linear(256, 256),
-            nn.Linear(256, 256),
+            nn.Linear(64, 64) for _ in range(num_layers - 1)
         ])
-        self.final_layer = nn.Linear(256, output_dim)
+        self.final_layer = nn.Linear(64, output_dim)
 
     def forward(self, x):
         x = x.view(x.shape[0], -1)
+        x = F.relu(self.initial_layer(x))
         for layer in self.hidden_layers:
             x = F.relu(layer(x))
         return self.final_layer(x)
@@ -93,3 +94,34 @@ class Slim(nn.Module):
             x = F.relu(layer(x))
 
         return self.final_layer(x)
+
+
+class HighwayNetwork(nn.Module):
+
+    def __init__(self, input_dim, output_dim, num_layers):
+        super().__init__()
+        height, width, depth = input_dim
+        self.initial_layer = nn.Linear(height * width * depth, 50)
+        self.hidden_layers = nn.ModuleList([
+            self.HighwayLayer(50, 50, bias_init=-(num_layers // 10))
+            for _ in range(num_layers - 1)
+        ])
+        self.final_layer = nn.Linear(50, output_dim)
+
+    def forward(self, x):
+        x = x.view(x.shape[0], -1)
+        x = F.relu(self.initial_layer(x))
+        for layer in self.hidden_layers:
+            x = layer(x)
+        return self.final_layer(x)
+
+    class HighwayLayer(nn.Module):
+        def __init__(self, input_units, output_units, bias_init=-1):
+            super().__init__()
+            self.h = nn.Linear(input_units, output_units)
+            self.t = nn.Linear(input_units, output_units)
+            nn.init.constant_(self.t.bias, bias_init)
+
+        def forward(self, x):
+            t_x = torch.sigmoid(self.t(x))
+            return F.relu(self.h(x)) * t_x + x * (1 - t_x)
