@@ -1,4 +1,5 @@
 import argparse
+import contextlib
 import enum
 import pytorch_lightning as pl
 import torch
@@ -48,14 +49,14 @@ class Model(pl.LightningModule):
         return {'test_loss': loss, 'test_acc': accuracy}
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adagrad(self.parameters(), lr=1e-2)
-        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
-        return [optimizer], [scheduler]
-        # return optimizer
+        optimizer = torch.optim.Adagrad(self.parameters(), lr=1e-3)
+        # scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
+        # return [optimizer], [scheduler]
+        return optimizer
 
 
-def train_and_evaluate(algo, dset, **kwargs):
-    train, test, dimensions, labels = dataset.train_test(dset)
+def train_and_evaluate(algo, dset, augment=False, debug=False, **kwargs):
+    train, test, dimensions, labels = dataset.train_test(dset, augment=augment)
     if algo == algorithm.Algorithm.LINEAR:
         model = algorithm.Linear(dimensions, labels)
     elif algo == algorithm.Algorithm.DNN:
@@ -68,6 +69,8 @@ def train_and_evaluate(algo, dset, **kwargs):
         model = algorithm.Slim(dimensions, labels)
     elif algo == algorithm.Algorithm.HIGHWAY_NETWORK:
         model = algorithm.HighwayNetwork(dimensions, labels, num_layers=100)
+    elif algo == algorithm.Algorithm.RESNET:
+        model = algorithm.ResidualNetwork(dimensions, labels, n=3)
     else:
         raise NotImplementedError('Algorithm not implemented: %s' % algo.name)
 
@@ -76,7 +79,10 @@ def train_and_evaluate(algo, dset, **kwargs):
     train_loader = data.DataLoader(train, **kwargs)
     test_loader = data.DataLoader(test, batch_size=1024)
 
-    trainer.fit(lightning_model, train_loader)
+    torch.set_printoptions(precision=4, sci_mode=False)
+    context = torch.autograd.detect_anomaly() if debug else contextlib.suppress()
+    with context:
+        trainer.fit(lightning_model, train_loader)
     trainer.test(lightning_model, test_loader)
     return model
 
@@ -93,6 +99,12 @@ if __name__ == '__main__':
         'algorithm',
         help='Name of the algorithm to use. '
              'Available options are: %s' % algorithm_names)
+    parser.add_argument(
+        '--augment', action='store_true',
+        help='Whether to perform image augmentation')
+    parser.add_argument(
+        '--debug', action='store_true',
+        help='Whether to enable gradient anomaly detection')
  
     args = parser.parse_args()
     try:
@@ -109,5 +121,6 @@ if __name__ == '__main__':
 
     train_and_evaluate(
         algo, dset,
-        batch_size=256, num_workers=4,
+        augment=args.augment, debug=args.debug,
+        batch_size=128, num_workers=4,
         pin_memory=True, shuffle=True)
