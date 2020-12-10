@@ -23,3 +23,4 @@ Supported algorithms are listed in `supervised/algorithm.py`.
 - DNN
 - CNN
 - [Highway Networks](https://arxiv.org/abs/1507.06228)
+- [Resnet](https://arxiv.org/abs/1512.03385)
