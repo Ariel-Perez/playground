@@ -1,11 +1,13 @@
 import argparse
 import contextlib
 import enum
+import os
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.data as data
+import torchvision.utils as utils
 
 import dataset
 import unsupervised.algorithm as algorithm
@@ -44,16 +46,43 @@ class Model(pl.LightningModule):
         return {'test_loss': loss}
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adagrad(self.parameters(), lr=1e-3)
+        optimizer = torch.optim.Adagrad(self.parameters(), lr=1e-2)
         # scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
         # return [optimizer], [scheduler]
         return optimizer
 
 
-class Callback(pl.callbacks.Callback):
+class Visualize(pl.callbacks.Callback):
 
-    def on_train_epoch_end(self, trainer):
-        print('Epoch end')
+    def __init__(self, dataloader, output_path, denormalization):
+        os.makedirs(output_path, exist_ok=True)
+        self.dataloader = dataloader
+        self.output_path = output_path
+        self.denormalization = denormalization
+        self.epoch = 0
+
+    def on_train_epoch_start(self, trainer, model):
+        print(' Writing sample images to %s' % self.output_path)
+        x, _ = next(iter(self.dataloader))
+        x = x.cuda()
+        batch_size = x.shape[0]
+        out = model(x)
+
+        out_split = torch.split(out, batch_size)
+        out_tensor = torch.cat(out_split, dim=2)
+        x_split = torch.split(x, batch_size)
+        x_tensor = torch.cat(x_split, dim=2)
+
+        final_tensor = self.denormalization(
+            torch.cat([x_tensor, out_tensor], dim=3))
+        if final_tensor.shape[1] == 1:
+            final_tensor = final_tensor.repeat(1, 3, 1, 1)
+
+        utils.save_image(final_tensor.squeeze(),
+                         os.path.join(
+                             self.output_path,
+                             'epoch_%i.jpg' % self.epoch))
+        self.epoch += 1
 
 
 def train_and_evaluate(algo, dset, augment=False, debug=False, **kwargs):
@@ -68,11 +97,13 @@ def train_and_evaluate(algo, dset, augment=False, debug=False, **kwargs):
         raise NotImplementedError('Algorithm not implemented: %s' % algo.name)
 
     lightning_model = Model(model)
-    trainer = pl.Trainer(gpus=1, precision=16, callbacks=[
-
-    ])
     train_loader = data.DataLoader(train, **kwargs)
+    val_loader = data.DataLoader(test, batch_size=16)
     test_loader = data.DataLoader(test, batch_size=1024)
+    trainer = pl.Trainer(gpus=1, precision=16, callbacks=[
+        Visualize(val_loader, 'save/unsupervised/%s' % dset.name,
+                  dataset.denormalization(dset)),
+    ])
 
     torch.set_printoptions(precision=4, sci_mode=False)
     context = torch.autograd.detect_anomaly() if debug else contextlib.suppress()

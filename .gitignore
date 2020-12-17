@@ -1,6 +1,7 @@
 *.pyc
 *.pt
 *.gz
+*.jpg
 
 __pycache__
 lightning_logs

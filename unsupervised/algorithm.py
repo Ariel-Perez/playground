@@ -57,10 +57,11 @@ class Encoder(nn.Module):
                 nn.ReLU(inplace=True),
             ) for i in range(len(hidden_layers))
         ])
+        for i in range(len(hidden_layers)):
+            height = (height + 1) // 2
+            width = (width + 1) // 2
+        final_dimensions = (hidden_layers[-1], height, width)
         self.flatten = nn.Flatten()
-        final_dimensions = (hidden_layers[-1],
-                            height // 2 ** len(hidden_layers),
-                            width // 2 ** len(hidden_layers))
         self.output_layer = nn.Linear(np.prod(final_dimensions), embedding_dim)
 
     def forward(self, x):
@@ -76,10 +77,10 @@ class Decoder(nn.Module):
         height, width, depth = dimensions
         self.dimensions = dimensions
         self.embedding_dim = embedding_dim
-        self.initial_dimensions = (
-            hidden_layers[0],
-            height // 2 ** len(hidden_layers),
-            width // 2 ** len(hidden_layers))
+        for i in range(len(hidden_layers)):
+            height = (height + 1) // 2
+            width = (width + 1) // 2
+        self.initial_dimensions = (hidden_layers[0], height, width)
         self.reassemble = nn.Linear(
             embedding_dim, np.prod(self.initial_dimensions))
         self.blocks = nn.Sequential(*[
@@ -106,4 +107,8 @@ class Decoder(nn.Module):
         x = x.view(batch_size, *self.initial_dimensions)
         x = self.blocks(x)
         x = self.output_layer(x)
+        if x.shape[-1] > self.dimensions[1]:
+            x = x.narrow(-1, 0, self.dimensions[1])
+        if x.shape[-2] > self.dimensions[0]:
+            x = x.narrow(-2, 0, self.dimensions[0])
         return x

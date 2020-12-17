@@ -19,6 +19,34 @@ def image_augmentation(dimensions):
     ]
 
 
+def denormalization(dataset: Dataset):
+    norm = normalization(dataset)
+    return torchvision.transforms.Normalize(
+        mean=tuple(-u / s for u, s in zip(norm.mean, norm.std)),
+        std=tuple(1 / s for s in norm.std),
+    )
+
+
+def normalization(dataset: Dataset):
+    if dataset in [Dataset.MNIST, Dataset.FASHION_MNIST]:
+        return torchvision.transforms.Normalize(
+            mean=(0.1307,),
+            std=(0.3081,),
+        )
+    elif dataset in [Dataset.CIFAR10, Dataset.CIFAR100]:
+        return torchvision.transforms.Normalize(
+            mean=(0.5, 0.5, 0.5),
+            std=(1.0, 1.0, 1.0,),
+        )
+    elif dataset == Dataset.IMAGENET:
+        return torchvision.transforms.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225],
+        )
+    else:
+        raise NotImplementedError('Dataset download not implemented: %s' % dataset.name)
+
+
 def train_test(dataset: Dataset, augment: bool = False):
     if dataset == Dataset.MNIST:
         constructor = torchvision.datasets.MNIST
@@ -52,20 +80,20 @@ def train_test(dataset: Dataset, augment: bool = False):
                 torchvision.transforms.Resize(480),
             ]),
             torchvision.transforms.RandomCrop(224),
-            torchvision.transforms.Normalize(
-                mean=[0.485, 0.456, 0.406],
-                std=[0.229, 0.224, 0.225]),
         ]
     else:
         raise NotImplementedError('Dataset download not implemented: %s' % dataset.name)
 
-    # std_transforms =
-    tensor_transform = torchvision.transforms.ToTensor()
-    augmentations.append(tensor_transform)
+    test_transforms = [torchvision.transforms.ToTensor()]
+    train_transforms = [torchvision.transforms.ToTensor()]
     if augment:
-        transform = torchvision.transforms.Compose(augmentations)
-    else:
-        transform = tensor_transform
-    train = constructor('data', train=True, download=True, transform=transform)
-    test = constructor('data', train=False, download=True, transform=tensor_transform)
+        train_transforms.extend(augmentations)
+    train_transforms.append(normalization(dataset))
+    test_transforms.append(normalization(dataset))
+    train = constructor(
+        'data', train=True, download=True,
+        transform=torchvision.transforms.Compose(train_transforms))
+    test = constructor(
+        'data', train=False, download=True,
+        transform=torchvision.transforms.Compose(test_transforms))
     return train, test, dimensions, labels
