@@ -8,7 +8,7 @@ import torch.nn.functional as F
 import torch.utils.data as data
 
 import dataset
-import supervised.algorithm as algorithm
+import unsupervised.algorithm as algorithm
 
 
 class Model(pl.LightningModule):
@@ -16,37 +16,32 @@ class Model(pl.LightningModule):
     def __init__(self, model):
         super().__init__()
         self.model = model
+        self.loss = nn.MSELoss()
 
     def forward(self, x):
-        return F.log_softmax(self.model(x), dim=1)
+        return self.model(x)
 
     def training_step(self, batch, _):
         # training_step defined the train loop. It is independent of forward
-        x, y = batch
-        y_hat = self(x)
-        loss = F.nll_loss(y_hat, y)
+        x, _ = batch
+        o = self(x)
+        loss = self.loss(o, x)
         self.log('train_loss', loss)
         return loss
 
     def validation_step(self, batch, _):
-        x, y = batch
-        y_hat = self(x)
-        loss = F.nll_loss(y_hat, y)
-        pred = torch.argmax(y_hat, dim=1)
-        accuracy = (pred == y).float().mean()
+        x, _ = batch
+        o = self(x)
+        loss = self.loss(o, x)
         self.log('val_loss', loss)
-        self.log('val_acc', accuracy)
-        return {'val_loss': loss, 'val_acc': accuracy}
+        return {'val_loss': loss}
 
     def test_step(self, batch, _):
-        x, y = batch
-        y_hat = self(x)
-        loss = F.nll_loss(y_hat, y)
-        pred = torch.argmax(y_hat, dim=1)
-        accuracy = (pred == y).float().mean()
+        x, _ = batch
+        o = self(x)
+        loss = self.loss(o, x)
         self.log('test_loss', loss)
-        self.log('test_acc', accuracy)
-        return {'test_loss': loss, 'test_acc': accuracy}
+        return {'test_loss': loss}
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adagrad(self.parameters(), lr=1e-3)
@@ -55,27 +50,27 @@ class Model(pl.LightningModule):
         return optimizer
 
 
+class Callback(pl.callbacks.Callback):
+
+    def on_train_epoch_end(self, trainer):
+        print('Epoch end')
+
+
 def train_and_evaluate(algo, dset, augment=False, debug=False, **kwargs):
-    train, test, dimensions, labels = dataset.train_test(dset, augment=augment)
-    if algo == algorithm.Algorithm.LINEAR:
-        model = algorithm.Linear(dimensions, labels)
-    elif algo == algorithm.Algorithm.DNN:
-        model = algorithm.DNN(dimensions, labels, num_layers=10)
-    elif algo == algorithm.Algorithm.CNN:
-        model = algorithm.CNN(dimensions, labels)
-    elif algo == algorithm.Algorithm.SLIM:
-        model = algorithm.Slim(dimensions, labels)
-    elif algo == algorithm.Algorithm.SLIM:
-        model = algorithm.Slim(dimensions, labels)
-    elif algo == algorithm.Algorithm.HIGHWAY_NETWORK:
-        model = algorithm.HighwayNetwork(dimensions, labels, num_layers=100)
-    elif algo == algorithm.Algorithm.RESNET:
-        model = algorithm.ResidualNetwork(dimensions, labels, n=3)
+    train, test, dimensions, _ = dataset.train_test(dset, augment=augment)
+    if algo == algorithm.Algorithm.AUTO_ENCODER:
+        model = algorithm.AutoEncoder(
+            dimensions,
+            embedding_dim=128,
+            hidden_layers=[32, 64, 128, 256],
+        )
     else:
         raise NotImplementedError('Algorithm not implemented: %s' % algo.name)
 
     lightning_model = Model(model)
-    trainer = pl.Trainer(gpus=1, precision=16)
+    trainer = pl.Trainer(gpus=1, precision=16, callbacks=[
+
+    ])
     train_loader = data.DataLoader(train, **kwargs)
     test_loader = data.DataLoader(test, batch_size=1024)
 
