@@ -6,8 +6,53 @@ import torch.nn.functional as F
 
 
 class Algorithm(enum.Enum):
-    AUTO_ENCODER = 0
+    AUTOENCODER = 0
     VAE = 1
+
+
+class VariationalAutoEncoder(nn.Module):
+    def __init__(self, dimensions, embedding_dim=64,
+                 hidden_layers=[32, 64, 128, 256]):
+        super().__init__()
+        self.dimensions = dimensions
+        self.embedding_dim = embedding_dim
+        self.encoder = Encoder(
+            dimensions, embedding_dim * 2, hidden_layers)
+        self.decoder = Decoder(
+            dimensions, embedding_dim,
+            list(reversed(hidden_layers)))
+        self._initialize_weights()
+
+    def loss(self, o, x, mu, log_var, kl_weight):
+        reconstruction_loss = F.mse_loss(o, x)
+        # kl_loss = torch.mean(
+        #     -0.5 * torch.sum(
+        #         1 + log_var - mu ** 2 - torch.exp(log_var), dim = 1),
+        #     dim = 0,
+        # )
+        return reconstruction_loss  # + kl_weight * kl_loss
+
+    def forward(self, x):
+        x = self.encoder(x)
+        mean, log_var = x.split(self.embedding_dim, dim=1)
+        std = torch.exp(0.5 * log_var)
+        x = mean + std * torch.randn_like(std)
+        x = self.decoder(x)
+        return x, mean, log_var
+
+    def _initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out',
+                                        nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                nn.init.normal_(m.weight, 0, 0.01)
+                nn.init.constant_(m.bias, 0)
 
 
 class AutoEncoder(nn.Module):
@@ -46,7 +91,7 @@ class AutoEncoder(nn.Module):
 class Encoder(nn.Module):
     def __init__(self, dimensions, embedding_dim, hidden_layers):
         super().__init__()
-        height, width, depth = dimensions
+        depth, height, width = dimensions
         self.dimensions = dimensions
         self.embedding_dim = embedding_dim
         channels = [depth] + hidden_layers
@@ -74,7 +119,7 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
     def __init__(self, dimensions, embedding_dim, hidden_layers):
         super().__init__()
-        height, width, depth = dimensions
+        depth, height, width = dimensions
         self.dimensions = dimensions
         self.embedding_dim = embedding_dim
         for i in range(len(hidden_layers)):
@@ -107,8 +152,8 @@ class Decoder(nn.Module):
         x = x.view(batch_size, *self.initial_dimensions)
         x = self.blocks(x)
         x = self.output_layer(x)
-        if x.shape[-1] > self.dimensions[1]:
-            x = x.narrow(-1, 0, self.dimensions[1])
-        if x.shape[-2] > self.dimensions[0]:
-            x = x.narrow(-2, 0, self.dimensions[0])
+        if x.shape[-1] > self.dimensions[-1]:
+            x = x.narrow(-1, 0, self.dimensions[-1])
+        if x.shape[-2] > self.dimensions[-2]:
+            x = x.narrow(-2, 0, self.dimensions[-2])
         return x

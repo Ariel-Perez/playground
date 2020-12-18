@@ -36,14 +36,14 @@ class Model(pl.LightningModule):
         o = self(x)
         loss = self.loss(o, x)
         self.log('val_loss', loss)
-        return {'val_loss': loss}
+        return loss
 
     def test_step(self, batch, _):
         x, _ = batch
         o = self(x)
         loss = self.loss(o, x)
         self.log('test_loss', loss)
-        return {'test_loss': loss}
+        return loss
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adagrad(self.parameters(), lr=1e-2)
@@ -65,12 +65,11 @@ class Visualize(pl.callbacks.Callback):
         print(' Writing sample images to %s' % self.output_path)
         x, _ = next(iter(self.dataloader))
         x = x.cuda()
-        batch_size = x.shape[0]
         out = model(x)
 
-        out_split = torch.split(out, batch_size)
+        out_split = torch.split(out, 1, dim=0)
         out_tensor = torch.cat(out_split, dim=2)
-        x_split = torch.split(x, batch_size)
+        x_split = torch.split(x, 1, dim=0)
         x_tensor = torch.cat(x_split, dim=2)
 
         final_tensor = self.denormalization(
@@ -85,12 +84,20 @@ class Visualize(pl.callbacks.Callback):
         self.epoch += 1
 
 
-def train_and_evaluate(algo, dset, augment=False, debug=False, **kwargs):
-    train, test, dimensions, _ = dataset.train_test(dset, augment=augment)
-    if algo == algorithm.Algorithm.AUTO_ENCODER:
+def train_and_evaluate(algo, dataset_name, augment=False, debug=False, **kwargs):
+    dset = dataset.Data.create(dataset_name, augment=augment)
+    train, test = dset.train(), dset.test()
+    dimensions = train[0][0].shape
+    if algo == algorithm.Algorithm.AUTOENCODER:
         model = algorithm.AutoEncoder(
             dimensions,
-            embedding_dim=128,
+            embedding_dim=256,
+            hidden_layers=[32, 64, 128, 256],
+        )
+    elif algo == algorithm.Algorithm.VAE:
+        model = algorithm.VariationalAutoEncoder(
+            dimensions,
+            embedding_dim=256,
             hidden_layers=[32, 64, 128, 256],
         )
     else:
@@ -101,8 +108,8 @@ def train_and_evaluate(algo, dset, augment=False, debug=False, **kwargs):
     val_loader = data.DataLoader(test, batch_size=16)
     test_loader = data.DataLoader(test, batch_size=1024)
     trainer = pl.Trainer(gpus=1, precision=16, callbacks=[
-        Visualize(val_loader, 'save/unsupervised/%s' % dset.name,
-                  dataset.denormalization(dset)),
+        Visualize(val_loader, 'save/unsupervised/%s' % dataset_name.name,
+                  dset.denormalization),
     ])
 
     torch.set_printoptions(precision=4, sci_mode=False)

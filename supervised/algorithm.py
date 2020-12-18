@@ -31,7 +31,7 @@ class DNN(nn.Module):
         self.hidden_layers = nn.ModuleList([
             nn.Linear(64, 64) for _ in range(num_layers - 1)
         ])
-        self.final_layer = nn.Linear(64, output_dim)
+        self.final_layer = nn.Linear(64, np.prod(output_dim))
 
     def forward(self, x):
         x = x.view(x.shape[0], -1)
@@ -44,7 +44,7 @@ class DNN(nn.Module):
 class CNN(nn.Module):
     def __init__(self, input_dim, output_dim):
         super().__init__()
-        height, width, depth = input_dim
+        depth, height, width = input_dim
         self.conv_layers = nn.ModuleList([
             nn.Conv2d(depth, 128, kernel_size=3, padding=1),
             nn.ReLU(),
@@ -74,7 +74,7 @@ class CNN(nn.Module):
 class Slim(nn.Module):
     def __init__(self, input_dim, output_dim):
         super().__init__()
-        height, width, depth = input_dim
+        depth, height, width = input_dim
         self.horizontal = nn.Conv2d(depth, 256, kernel_size=(3, width))
         self.horizontal_2 = nn.Conv2d(256, 512, kernel_size=(1, width - 2))
         self.vertical = nn.Conv2d(1, 256, kernel_size=(height, 3))
@@ -101,7 +101,7 @@ class HighwayNetwork(nn.Module):
 
     def __init__(self, input_dim, output_dim, num_layers):
         super().__init__()
-        height, width, depth = input_dim
+        depth, height, width = input_dim
         self.initial_layer = nn.Linear(height * width * depth, 50)
         self.hidden_layers = nn.ModuleList([
             self.HighwayLayer(50, 50, bias_init=-(num_layers // 10))
@@ -131,7 +131,7 @@ class HighwayNetwork(nn.Module):
 class ResidualNetwork(nn.Module):
     def __init__(self, input_dim, output_dim, n=3):
         super().__init__()
-        _, _, depth = input_dim
+        depth, _, _ = input_dim
         self.batch_norm = nn.BatchNorm2d(depth)
         self.initial_layer = nn.Conv2d(depth, 16, kernel_size=3, padding=1)
         self.first_residual_blocks = nn.ModuleList([

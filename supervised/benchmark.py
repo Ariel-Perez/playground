@@ -55,8 +55,12 @@ class Model(pl.LightningModule):
         return optimizer
 
 
-def train_and_evaluate(algo, dset, augment=False, debug=False, **kwargs):
-    train, test, dimensions, labels = dataset.train_test(dset, augment=augment)
+def train_and_evaluate(algo, dataset_name, augment=False, debug=False, **kwargs):
+    dset = dataset.Data.create(dataset_name, augment=augment)
+    train, test = dset.train(), dset.test()
+    sample_x = train[0][0]
+    dimensions = sample_x.shape
+    labels = dset.num_labels
     if algo == algorithm.Algorithm.LINEAR:
         model = algorithm.Linear(dimensions, labels)
     elif algo == algorithm.Algorithm.DNN:
