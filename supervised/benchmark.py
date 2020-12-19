@@ -11,50 +11,6 @@ import dataset
 import supervised.algorithm as algorithm
 
 
-class Model(pl.LightningModule):
-
-    def __init__(self, model):
-        super().__init__()
-        self.model = model
-
-    def forward(self, x):
-        return F.log_softmax(self.model(x), dim=1)
-
-    def training_step(self, batch, _):
-        # training_step defined the train loop. It is independent of forward
-        x, y = batch
-        y_hat = self(x)
-        loss = F.nll_loss(y_hat, y)
-        self.log('train_loss', loss)
-        return loss
-
-    def validation_step(self, batch, _):
-        x, y = batch
-        y_hat = self(x)
-        loss = F.nll_loss(y_hat, y)
-        pred = torch.argmax(y_hat, dim=1)
-        accuracy = (pred == y).float().mean()
-        self.log('val_loss', loss)
-        self.log('val_acc', accuracy)
-        return {'val_loss': loss, 'val_acc': accuracy}
-
-    def test_step(self, batch, _):
-        x, y = batch
-        y_hat = self(x)
-        loss = F.nll_loss(y_hat, y)
-        pred = torch.argmax(y_hat, dim=1)
-        accuracy = (pred == y).float().mean()
-        self.log('test_loss', loss)
-        self.log('test_acc', accuracy)
-        return {'test_loss': loss, 'test_acc': accuracy}
-
-    def configure_optimizers(self):
-        optimizer = torch.optim.Adagrad(self.parameters(), lr=1e-3)
-        # scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
-        # return [optimizer], [scheduler]
-        return optimizer
-
-
 def train_and_evaluate(algo, dataset_name, augment=False, debug=False, **kwargs):
     dset = dataset.Data.create(dataset_name, augment=augment)
     train, test = dset.train(), dset.test()
@@ -67,10 +23,6 @@ def train_and_evaluate(algo, dataset_name, augment=False, debug=False, **kwargs)
         model = algorithm.DNN(dimensions, labels, num_layers=10)
     elif algo == algorithm.Algorithm.CNN:
         model = algorithm.CNN(dimensions, labels)
-    elif algo == algorithm.Algorithm.SLIM:
-        model = algorithm.Slim(dimensions, labels)
-    elif algo == algorithm.Algorithm.SLIM:
-        model = algorithm.Slim(dimensions, labels)
     elif algo == algorithm.Algorithm.HIGHWAY_NETWORK:
         model = algorithm.HighwayNetwork(dimensions, labels, num_layers=100)
     elif algo == algorithm.Algorithm.RESNET:
@@ -78,7 +30,6 @@ def train_and_evaluate(algo, dataset_name, augment=False, debug=False, **kwargs)
     else:
         raise NotImplementedError('Algorithm not implemented: %s' % algo.name)
 
-    lightning_model = Model(model)
     trainer = pl.Trainer(gpus=1, precision=16)
     train_loader = data.DataLoader(train, **kwargs)
     test_loader = data.DataLoader(test, batch_size=1024)
@@ -86,8 +37,8 @@ def train_and_evaluate(algo, dataset_name, augment=False, debug=False, **kwargs)
     torch.set_printoptions(precision=4, sci_mode=False)
     context = torch.autograd.detect_anomaly() if debug else contextlib.suppress()
     with context:
-        trainer.fit(lightning_model, train_loader)
-    trainer.test(lightning_model, test_loader)
+        trainer.fit(model, train_loader)
+    trainer.test(model, test_loader)
     return model
 
 

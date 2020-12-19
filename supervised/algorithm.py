@@ -1,5 +1,6 @@
 import enum
 import numpy as np
+import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -9,22 +10,65 @@ class Algorithm(enum.Enum):
     LINEAR = 0
     DNN = 1
     CNN = 2
-    SLIM = 3
-    HIGHWAY_NETWORK = 4
-    RESNET = 5
+    HIGHWAY_NETWORK = 3
+    RESNET = 4
 
 
-class Linear(nn.Module):
+class Model(pl.LightningModule):
+
+    def __init__(self):
+        super().__init__()
+
+    def loss(self, y_hat, y):
+        return F.nll_loss(y_hat, y)
+
+    def training_step(self, batch, _):
+        # training_step defined the train loop. It is independent of forward
+        x, y = batch
+        y_hat = self(x)
+        loss = self.loss(y_hat, y)
+        self.log('train_loss', loss)
+        return loss
+
+    def validation_step(self, batch, _):
+        x, y = batch
+        y_hat = self(x)
+        loss = self.loss(y_hat, y)
+        pred = torch.argmax(y_hat, dim=1)
+        accuracy = (pred == y).float().mean()
+        self.log('val_loss', loss)
+        self.log('val_acc', accuracy)
+        return {'val_loss': loss, 'val_acc': accuracy}
+
+    def test_step(self, batch, _):
+        x, y = batch
+        y_hat = self(x)
+        loss = self.loss(y_hat, y)
+        pred = torch.argmax(y_hat, dim=1)
+        accuracy = (pred == y).float().mean()
+        self.log('test_loss', loss)
+        self.log('test_acc', accuracy)
+        return {'test_loss': loss, 'test_acc': accuracy}
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adagrad(self.parameters(), lr=1e-3)
+        # scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
+        # return [optimizer], [scheduler]
+        return optimizer
+
+
+class Linear(Model):
     def __init__(self, input_dim, output_dim):
         super().__init__()
         self.linear = nn.Linear(np.prod(input_dim), output_dim)
 
     def forward(self, x):
         x = x.view(x.shape[0], -1)
-        return self.linear(x)
+        x = self.linear(x)
+        return F.log_softmax(x, dim=1)
 
 
-class DNN(nn.Module):
+class DNN(Model):
     def __init__(self, input_dim, output_dim, num_layers):
         super().__init__()
         self.initial_layer = nn.Linear(np.prod(input_dim), 64)
@@ -38,10 +82,11 @@ class DNN(nn.Module):
         x = F.relu(self.initial_layer(x))
         for layer in self.hidden_layers:
             x = F.relu(layer(x))
-        return self.final_layer(x)
+        x = self.final_layer(x)
+        return F.log_softmax(x, dim=1)
 
 
-class CNN(nn.Module):
+class CNN(Model):
     def __init__(self, input_dim, output_dim):
         super().__init__()
         depth, height, width = input_dim
@@ -68,36 +113,11 @@ class CNN(nn.Module):
         for layer in self.fc_layers:
             x = layer(x)
 
-        return self.final_layer(x)
+        x = self.final_layer(x)
+        return F.log_softmax(x, dim=1)
 
 
-class Slim(nn.Module):
-    def __init__(self, input_dim, output_dim):
-        super().__init__()
-        depth, height, width = input_dim
-        self.horizontal = nn.Conv2d(depth, 256, kernel_size=(3, width))
-        self.horizontal_2 = nn.Conv2d(256, 512, kernel_size=(1, width - 2))
-        self.vertical = nn.Conv2d(1, 256, kernel_size=(height, 3))
-        self.vertical_2 = nn.Conv2d(256, 512, kernel_size=(height - 2, 1))
-        self.fc_layers = nn.ModuleList([
-            nn.Linear(1024, 256),
-            nn.Linear(256, 128),
-        ])
-        self.final_layer = nn.Linear(128, output_dim)
-
-    def forward(self, x):
-        horizontal = F.relu(self.horizontal(x))
-        vertical = F.relu(self.vertical(x))
-        x = torch.cat([
-            F.relu(self.vertical_2(horizontal)).squeeze(),
-            F.relu(self.horizontal_2(vertical)).squeeze()], dim=1)
-        for layer in self.fc_layers:
-            x = F.relu(layer(x))
-
-        return self.final_layer(x)
-
-
-class HighwayNetwork(nn.Module):
+class HighwayNetwork(Model):
 
     def __init__(self, input_dim, output_dim, num_layers):
         super().__init__()
@@ -114,7 +134,8 @@ class HighwayNetwork(nn.Module):
         x = F.relu(self.initial_layer(x))
         for layer in self.hidden_layers:
             x = layer(x)
-        return self.final_layer(x)
+        x = self.final_layer(x)
+        return F.log_softmax(x, dim=1)
 
     class HighwayLayer(nn.Module):
         def __init__(self, input_units, output_units, bias_init=-1):
@@ -128,7 +149,7 @@ class HighwayNetwork(nn.Module):
             return F.relu(self.h(x)) * t_x + x * (1 - t_x)
 
 
-class ResidualNetwork(nn.Module):
+class ResidualNetwork(Model):
     def __init__(self, input_dim, output_dim, n=3):
         super().__init__()
         depth, _, _ = input_dim
@@ -164,7 +185,8 @@ class ResidualNetwork(nn.Module):
             x = layer(x)
 
         x = self.pool(x)
-        return self.final_layer(x.squeeze())
+        x = self.final_layer(x.squeeze())
+        return F.log_softmax(x, dim=1)
 
     class ResidualBlock(nn.Module):
         def __init__(self, input_channels, output_channels):

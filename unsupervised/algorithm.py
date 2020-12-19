@@ -1,5 +1,6 @@
 import enum
 import numpy as np
+import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,7 +11,45 @@ class Algorithm(enum.Enum):
     VAE = 1
 
 
-class VariationalAutoEncoder(nn.Module):
+class Model(pl.LightningModule):
+
+    def __init__(self):
+        super().__init__()
+        self.loss_function = nn.MSELoss()
+
+    def loss(self, o, x):
+        return self.loss_function(o, x)
+
+    def training_step(self, batch, _):
+        # training_step defined the train loop. It is independent of forward
+        x, _ = batch
+        o = self(x)
+        loss = self.loss(o, x)
+        self.log('train_loss', loss)
+        return loss
+
+    def validation_step(self, batch, _):
+        x, _ = batch
+        o = self(x)
+        loss = self.loss(o, x)
+        self.log('val_loss', loss)
+        return loss
+
+    def test_step(self, batch, _):
+        x, _ = batch
+        o = self(x)
+        loss = self.loss(o, x)
+        self.log('test_loss', loss)
+        return loss
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adagrad(self.parameters(), lr=1e-2)
+        # scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
+        # return [optimizer], [scheduler]
+        return optimizer
+
+
+class VariationalAutoEncoder(Model):
     def __init__(self, dimensions, embedding_dim=64,
                  hidden_layers=[32, 64, 128, 256]):
         super().__init__()
@@ -55,7 +94,7 @@ class VariationalAutoEncoder(nn.Module):
                 nn.init.constant_(m.bias, 0)
 
 
-class AutoEncoder(nn.Module):
+class AutoEncoder(Model):
     def __init__(self, dimensions, embedding_dim=64,
                  hidden_layers=[32, 64, 128, 256]):
         super().__init__()
@@ -119,6 +158,7 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
     def __init__(self, dimensions, embedding_dim, hidden_layers):
         super().__init__()
+        self.loss_function = nn.BCELoss()
         depth, height, width = dimensions
         self.dimensions = dimensions
         self.embedding_dim = embedding_dim
@@ -152,8 +192,10 @@ class Decoder(nn.Module):
         x = x.view(batch_size, *self.initial_dimensions)
         x = self.blocks(x)
         x = self.output_layer(x)
+
+        # Crop borders if needed
         if x.shape[-1] > self.dimensions[-1]:
-            x = x.narrow(-1, 0, self.dimensions[-1])
+            x = x.narrow(-1, (x.shape[-1] - self.dimensions[-1]) // 2, self.dimensions[-1])
         if x.shape[-2] > self.dimensions[-2]:
-            x = x.narrow(-2, 0, self.dimensions[-2])
+            x = x.narrow(-2, (x.shape[-2] - self.dimensions[-2]) // 2, self.dimensions[-2])
         return x

@@ -13,45 +13,6 @@ import dataset
 import unsupervised.algorithm as algorithm
 
 
-class Model(pl.LightningModule):
-
-    def __init__(self, model):
-        super().__init__()
-        self.model = model
-        self.loss = nn.MSELoss()
-
-    def forward(self, x):
-        return self.model(x)
-
-    def training_step(self, batch, _):
-        # training_step defined the train loop. It is independent of forward
-        x, _ = batch
-        o = self(x)
-        loss = self.loss(o, x)
-        self.log('train_loss', loss)
-        return loss
-
-    def validation_step(self, batch, _):
-        x, _ = batch
-        o = self(x)
-        loss = self.loss(o, x)
-        self.log('val_loss', loss)
-        return loss
-
-    def test_step(self, batch, _):
-        x, _ = batch
-        o = self(x)
-        loss = self.loss(o, x)
-        self.log('test_loss', loss)
-        return loss
-
-    def configure_optimizers(self):
-        optimizer = torch.optim.Adagrad(self.parameters(), lr=1e-2)
-        # scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
-        # return [optimizer], [scheduler]
-        return optimizer
-
-
 class Visualize(pl.callbacks.Callback):
 
     def __init__(self, dataloader, output_path, denormalization):
@@ -103,7 +64,6 @@ def train_and_evaluate(algo, dataset_name, augment=False, debug=False, **kwargs)
     else:
         raise NotImplementedError('Algorithm not implemented: %s' % algo.name)
 
-    lightning_model = Model(model)
     train_loader = data.DataLoader(train, **kwargs)
     val_loader = data.DataLoader(test, batch_size=16)
     test_loader = data.DataLoader(test, batch_size=1024)
@@ -115,8 +75,8 @@ def train_and_evaluate(algo, dataset_name, augment=False, debug=False, **kwargs)
     torch.set_printoptions(precision=4, sci_mode=False)
     context = torch.autograd.detect_anomaly() if debug else contextlib.suppress()
     with context:
-        trainer.fit(lightning_model, train_loader)
-    trainer.test(lightning_model, test_loader)
+        trainer.fit(model, train_loader)
+    trainer.test(model, test_loader)
     return model
 
 
